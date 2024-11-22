@@ -2,10 +2,21 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const { PythonShell } = require('python-shell');
+const cors = require('cors');
 const chalk = require('chalk');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+const corsOptions = {
+    origin: 'https://ocr-iota-one.vercel.app', 
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+    optionsSuccessStatus: 200
+  };
+  
+app.use(cors(corsOptions));
 
 app.use((req, res, next) => {
     console.log(chalk.blue(`[${new Date().toLocaleString()}] ${req.method} ${req.path}`));
@@ -101,6 +112,18 @@ app.use((err, req, res, next) => {
     error: 'Something went wrong!',
     message: err.message
   });
+});
+
+// Add error handling for PythonShell
+PythonShell.run('ocr_processing.py', {
+    mode: 'json',
+    pythonPath: 'python3',  // Specify full path if needed
+    args: [file.path]
+  }, (err, results) => {
+    if (err) {
+      console.error('Detailed Python Shell Error:', err);
+      // More detailed error logging
+    }
 });
 
 // Startup logging
