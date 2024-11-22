@@ -44,7 +44,7 @@ const DocumentProcessor = () => {
         formData.append('files', file);
       });
 
-      const response = await axios.post('/api/upload', formData, {
+      const response = await axios.post('/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }

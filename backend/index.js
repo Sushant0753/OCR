@@ -7,7 +7,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-app.post('/api/upload', upload.array('files'), async (req, res) => {
+app.post('/upload', upload.array('files'), async (req, res) => {
     try {
       if (!req.files || req.files.length === 0) {
         return res.status(400).json({ error: 'No files uploaded' });
