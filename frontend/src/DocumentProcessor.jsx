@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import axios from 'axios';
 import CardContent from './Components/UI/CardContent';
 import Card from './Components/UI/Card';
 import CardHeader from './Components/UI/CardHeader';
@@ -28,7 +29,7 @@ const DocumentProcessor = () => {
     setFiles(updatedFiles);
   };
 
-  const processDocuments = () => {
+  const processDocuments = async () => {
     if (files.length === 0) {
       setError("Please select at least one file");
       return;
@@ -37,23 +38,26 @@ const DocumentProcessor = () => {
     setProcessing(true);
     setError(null);
 
-    // Simulate processing
-    setTimeout(() => {
-      const newResults = files.map(file => ({
-        fileName: file.name,
-        timestamp: new Date().toISOString(),
-        confidence: Math.random() * 0.3 + 0.7,
-        documentType: ['Invoice', 'Contract', 'Receipt'][Math.floor(Math.random() * 3)],
-        summary: "This is a sample summary of the processed document...",
-        entities: ["Company: TechCorp", "Date: 2024-03-15", "Amount: $5,000"],
-        suggestions: ["Verify payment", "Update records", "Follow up"]
-      }));
+    try {
+      const formData = new FormData();
+      files.forEach(file => {
+        formData.append('files', file);
+      });
 
-      setResults([...results, ...newResults]);
+      const response = await axios.post('/api/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      setResults([...results, ...response.data]);
       setFiles([]);
-      setProcessing(false);
       setActiveTab('results');
-    }, 2000);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Document processing failed');
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const FilePreview = ({ file }) => (
