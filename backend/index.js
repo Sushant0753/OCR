@@ -1,4 +1,5 @@
 const express = require('express');
+require('dotenv').config();
 const multer = require('multer');
 const path = require('path');
 const { PythonShell } = require('python-shell');
@@ -7,6 +8,9 @@ const chalk = require('chalk');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
+const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE) || 10 * 1024 * 1024;
+const ALLOWED_FILE_TYPES = (process.env.ALLOWED_FILE_TYPES || '.pdf,.png,.jpg,.jpeg').split(',');
 
 const corsOptions = {
     origin: 'https://ocr-iota-one.vercel.app', 
@@ -27,27 +31,26 @@ app.use((req, res, next) => {
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/');
-  },
-  filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname}`);
-  }
+    destination: (req, file, cb) => {
+      cb(null, UPLOADS_DIR);
+    },
+    filename: (req, file, cb) => {
+      cb(null, `${Date.now()}-${file.originalname}`);
+    }
 });
 
 const upload = multer({ 
-  storage: storage,
-  limits: { 
-    fileSize: 10 * 1024 * 1024 // 10MB max file size
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = ['.pdf', '.png', '.jpg', '.jpeg'];
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (allowedTypes.includes(ext)) {
-      return cb(null, true);
+    storage: storage,
+    limits: { 
+      fileSize: MAX_FILE_SIZE
+    },
+    fileFilter: (req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (ALLOWED_FILE_TYPES.includes(ext)) {
+        return cb(null, true);
+      }
+      cb(new Error('Invalid file type'));
     }
-    cb(new Error('Invalid file type. Only PDF and image files are allowed.'));
-  }
 });
 
 app.use(express.json());
