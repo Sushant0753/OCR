@@ -57,7 +57,7 @@ const ResultCard = ({ result }) => {
               <img 
                 src={imageSource} 
                 alt="OCR Boundary Boxes"
-                className="w-full h-auto max-h-96 object-contain"
+                className="w-full h-auto max-h-full object-contain"
                 onError={(e) => {
                   console.error('Image failed to load:', e);
                   e.target.style.display = 'none';

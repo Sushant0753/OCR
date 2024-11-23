@@ -126,7 +126,11 @@ const runOCR = async (filePath, retries = MAX_RETRIES) => {
 
 // Function to get summary using LlamaAI
 async function getSummary(text, imageContent) {
-  const prompt = `This is the text extracted from a research paper using OCR technique, provide a detailed summary and key points for it, i have also uploaded the image of the ocr bounding boxex.
+  const prompt = `Please analyze the following OCR-extracted text, taking into account its context and nuances. Generate a comprehensive summary that highlights key insights, potential actions, and any relevant details, ensuring accuracy and clarity. While the document may not necessarily be from one of the following use cases, consider them to ensure the summary addresses specific needs:
+
+    1.Legal Document Analysis: Summarize key points and actions from contracts, agreements, and legal notices.
+    2.Medical Records Processing:Extract and summarize patient information, diagnoses, and treatment plans.
+    3.Invoice Management:Extract financial data, summarize transactions, and calculate totals from invoices and receipts.
 
   Extracted Text: ${text}
 

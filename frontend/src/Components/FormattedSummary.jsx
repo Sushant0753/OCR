@@ -2,8 +2,8 @@ import React from 'react';
 
 const FormattedSummary = ({ text }) => {
   const formatText = (text) => {
-    // Split the text into sections by double newlines
-    return text.split('\n\n').map((section, index) => {
+    // Split the text into sections by newline characters
+    return text.split('\n').map((section, index) => {
       let formattedSection = section;
       
       // Bold text (between **)
@@ -47,4 +47,4 @@ const FormattedSummary = ({ text }) => {
   );
 };
 
-export default FormattedSummary
+export default FormattedSummary;
