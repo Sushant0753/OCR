@@ -6,16 +6,15 @@ import 'dotenv/config';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
+import LlamaAI from 'llamaai';
 import axios from 'axios';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Initialize Google Generative AI with your API key
-const apiKey = 'AIzaSyDxfpvfw_FXorRZ4_N1s8vriK3ts-12HXg'; 
-const genAI = new GoogleGenerativeAI(apiKey);
-const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+// Initialize LlamaAI with the API token
+const apiToken = 'LA-bb30967fec6e4e928f6517e43925af3f33c745a93611429f8d5d3596018c8ea9';
+const llamaAPI = new LlamaAI(apiToken);
 
 // Constants
 const PORT = process.env.PORT || 3000;
@@ -29,7 +28,7 @@ const app = express();
 
 // Enhanced CORS configuration
 app.use(cors({
-  origin:'http://localhost:5173',
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   methods: ['GET', 'POST'],
   allowedHeaders: ['Content-Type'],
   credentials: true,
@@ -81,7 +80,6 @@ const runOCR = async (filePath, retries = MAX_RETRIES) => {
         }
         try {
           const ocrResult = JSON.parse(result);
-          console.log('OCR Result:', ocrResult);  // Log OCR result
           if (ocrResult.status === 'error') {
             reject(new Error(ocrResult.error));
             return;
@@ -108,10 +106,9 @@ const runOCR = async (filePath, retries = MAX_RETRIES) => {
   throw lastError;
 };
 
-
 // Function to get summary using LlamaAI
 async function getSummary(text, imageContent) {
-  const prompt = `This is the text extracted from a research paper using OCR technique, provide a detailed summary and key points for it, i have also uploaded the image of the ocr bounding boxex.
+  const prompt = `Please provide a concise summary of the following document. Include key points and any notable information.
 
   Extracted Text: ${text}
 
@@ -119,43 +116,67 @@ async function getSummary(text, imageContent) {
 
   Please format the summary in a clear, readable way.`;
 
-  console.log('Prompt sent to Google Gemini:', prompt);  // Log the prompt
+  const exponentialBackoff = async (fn, retries) => {
+    let attempt = 0;
+    while (attempt < retries) {
+      try {
+        return await fn();
+      } catch (error) {
+        if (attempt === retries - 1) {
+          throw error;
+        }
+        const delay = Math.pow(2, attempt) * RETRY_DELAY;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        attempt++;
+      }
+    }
+  };
 
   try {
-    // Call Google Gemini API to generate content
-    const result = await model.generateContent(prompt);
-    console.log('Google Gemini Response:', result);  // Log the API response
+    return await exponentialBackoff(async () => {
+      const apiRequestJson = {
+        messages: [
+          { role: "user", content: prompt }
+        ],
+        functions: [
+          {
+            name: "get_summary", // Ensure you have the correct function name in LlamaAI
+            description: "Get a summary of the document.",
+            parameters: {
+              type: "object",
+              properties: {
+                text: {
+                  type: "string",
+                  description: "Extracted text to summarize"
+                },
+                imageContent: {
+                  type: "string",
+                  description: "Description of the image content"
+                }
+              }
+            },
+            required: ["text", "imageContent"],
+          }
+        ],
+        stream: false,
+        function_call: "get_summary", // Ensure the function name matches your LlamaAI setup
+      };
 
-    // Log the candidates array to inspect its structure
-    console.log('Candidates:', result.response.candidates);
-
-    // Check if candidates exists and has at least one item
-    if (result.response.candidates && result.response.candidates.length > 0) {
-      const candidate = result.response.candidates[0];
-      
-      // Extract the text from the 'parts' array inside 'content'
-      const summary = candidate.content.parts[0];  // Assuming the text is in the first part
-      
-      console.log('Generated Summary:', summary);  // Log the summary text
-      return summary || 'No summary generated.';  // Return the summary or a fallback message
-    } else {
-      console.error('No candidates available in the response.');
-      return 'Summary generation failed. No candidates returned.';
-    }
+      const llamaResponse = await llamaAPI.run(apiRequestJson);
+      return llamaResponse.summary || llamaResponse;
+    }, MAX_RETRIES);
   } catch (error) {
-    console.error('Error generating summary with Google Gemini:', error);
+    console.error('Error with LlamaAI API:', error);
     return {
-      summary: 'Summary generation failed. Please try again later.',
+      summary: "Summary generation is currently unavailable due to API limits and fallback failure. Here's the extracted text:",
       extracted_text: text,
-      error: error.message
+      error: "All fallback APIs failed"
     };
   }
 }
 
-
 // File upload route
 app.post('/upload', upload.array('files'), async (req, res) => {
-  console.log('Uploaded files:', req.files);  // Log uploaded files
   const uploadedFiles = [];
   try {
     if (!req.files || req.files.length === 0) {
@@ -166,7 +187,6 @@ app.post('/upload', upload.array('files'), async (req, res) => {
       uploadedFiles.push(file.path);
       try {
         const ocrResult = await runOCR(file.path);
-        console.log('OCR result for file:', file.originalname, ocrResult);  // Log OCR result
         const summaryResult = await getSummary(
           ocrResult.extracted_text,
           `This is a ${path.extname(file.originalname).slice(1).toUpperCase()} document with ${ocrResult.word_count} words and ${ocrResult.character_count} characters.`
@@ -200,8 +220,6 @@ app.post('/upload', upload.array('files'), async (req, res) => {
     }
   }
 });
-
-
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

@@ -81,7 +81,6 @@ const runOCR = async (filePath, retries = MAX_RETRIES) => {
         }
         try {
           const ocrResult = JSON.parse(result);
-          console.log('OCR Result:', ocrResult);  // Log OCR result
           if (ocrResult.status === 'error') {
             reject(new Error(ocrResult.error));
             return;
@@ -108,10 +107,9 @@ const runOCR = async (filePath, retries = MAX_RETRIES) => {
   throw lastError;
 };
 
-
 // Function to get summary using LlamaAI
 async function getSummary(text, imageContent) {
-  const prompt = `This is the text extracted from a research paper using OCR technique, provide a detailed summary and key points for it, i have also uploaded the image of the ocr bounding boxex.
+  const prompt = `Please provide a concise summary of the following document. Include key points and any notable information.
 
   Extracted Text: ${text}
 
@@ -119,29 +117,10 @@ async function getSummary(text, imageContent) {
 
   Please format the summary in a clear, readable way.`;
 
-  console.log('Prompt sent to Google Gemini:', prompt);  // Log the prompt
-
   try {
     // Call Google Gemini API to generate content
     const result = await model.generateContent(prompt);
-    console.log('Google Gemini Response:', result);  // Log the API response
-
-    // Log the candidates array to inspect its structure
-    console.log('Candidates:', result.response.candidates);
-
-    // Check if candidates exists and has at least one item
-    if (result.response.candidates && result.response.candidates.length > 0) {
-      const candidate = result.response.candidates[0];
-      
-      // Extract the text from the 'parts' array inside 'content'
-      const summary = candidate.content.parts[0];  // Assuming the text is in the first part
-      
-      console.log('Generated Summary:', summary);  // Log the summary text
-      return summary || 'No summary generated.';  // Return the summary or a fallback message
-    } else {
-      console.error('No candidates available in the response.');
-      return 'Summary generation failed. No candidates returned.';
-    }
+    return result.response.text;  // The summary text returned by Google Gemini
   } catch (error) {
     console.error('Error generating summary with Google Gemini:', error);
     return {
@@ -155,7 +134,6 @@ async function getSummary(text, imageContent) {
 
 // File upload route
 app.post('/upload', upload.array('files'), async (req, res) => {
-  console.log('Uploaded files:', req.files);  // Log uploaded files
   const uploadedFiles = [];
   try {
     if (!req.files || req.files.length === 0) {
@@ -166,7 +144,6 @@ app.post('/upload', upload.array('files'), async (req, res) => {
       uploadedFiles.push(file.path);
       try {
         const ocrResult = await runOCR(file.path);
-        console.log('OCR result for file:', file.originalname, ocrResult);  // Log OCR result
         const summaryResult = await getSummary(
           ocrResult.extracted_text,
           `This is a ${path.extname(file.originalname).slice(1).toUpperCase()} document with ${ocrResult.word_count} words and ${ocrResult.character_count} characters.`
@@ -200,7 +177,6 @@ app.post('/upload', upload.array('files'), async (req, res) => {
     }
   }
 });
-
 
 
 app.listen(PORT, () => {
