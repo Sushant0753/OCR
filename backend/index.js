@@ -12,12 +12,11 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Initialize Google Generative AI with your API key
 const apiKey = process.env.GEMINI_API_KEY; 
 const genAI = new GoogleGenerativeAI(apiKey);
 const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-// Constants
+
 const PORT = process.env.PORT || 3000;
 const UPLOADS_DIR = './uploads';
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -63,7 +62,16 @@ const upload = multer({
   fileFilter
 });
 
-// Run OCR process
+const imageToBase64 = (filePath) => {
+  try {
+    const img = fs.readFileSync(filePath);
+    return Buffer.from(img).toString('base64');
+  } catch (error) {
+    console.error('Error converting image to base64:', error);
+    return null;
+  }
+};
+
 const runOCR = async (filePath, retries = MAX_RETRIES) => {
   const executeOCR = () => {
     return new Promise((resolve, reject) => {
@@ -74,18 +82,23 @@ const runOCR = async (filePath, retries = MAX_RETRIES) => {
       pythonProcess.stdout.on('data', (data) => result += data.toString());
       pythonProcess.stderr.on('data', (data) => error += data.toString());
 
-      pythonProcess.on('close', (code) => {
+      pythonProcess.on('close', async (code) => {
         if (code !== 0) {
           reject(new Error(`OCR process failed with code ${code}: ${error}`));
           return;
         }
         try {
           const ocrResult = JSON.parse(result);
-          console.log('OCR Result:', ocrResult);  // Log OCR result
-          if (ocrResult.status === 'error') {
-            reject(new Error(ocrResult.error));
-            return;
+          console.log('Raw OCR Result:', {
+            hasExtractedImage: !!ocrResult.extracted_image,
+            extractedImageLength: ocrResult.extracted_image ? ocrResult.extracted_image.length : 0
+          });
+          
+          // Change this from processed_image_path to extracted_image
+          if (ocrResult.extracted_image) {
+            ocrResult.processed_image = ocrResult.extracted_image;
           }
+          
           resolve(ocrResult);
         } catch (e) {
           reject(new Error(`Failed to parse OCR results: ${e.message}`));
@@ -107,6 +120,8 @@ const runOCR = async (filePath, retries = MAX_RETRIES) => {
   }
   throw lastError;
 };
+
+
 
 
 // Function to get summary using LlamaAI
@@ -153,9 +168,8 @@ async function getSummary(text, imageContent) {
 }
 
 
-// File upload route
 app.post('/upload', upload.array('files'), async (req, res) => {
-  console.log('Uploaded files:', req.files);  // Log uploaded files
+  console.log('Uploaded files:', req.files);
   const uploadedFiles = [];
   try {
     if (!req.files || req.files.length === 0) {
@@ -166,7 +180,6 @@ app.post('/upload', upload.array('files'), async (req, res) => {
       uploadedFiles.push(file.path);
       try {
         const ocrResult = await runOCR(file.path);
-        console.log('OCR result for file:', file.originalname, ocrResult);  // Log OCR result
         const summaryResult = await getSummary(
           ocrResult.extracted_text,
           `This is a ${path.extname(file.originalname).slice(1).toUpperCase()} document with ${ocrResult.word_count} words and ${ocrResult.character_count} characters.`
@@ -176,6 +189,7 @@ app.post('/upload', upload.array('files'), async (req, res) => {
           fileName: file.originalname,
           documentType: path.extname(file.originalname).slice(1).toUpperCase(),
           extractedText: ocrResult.extracted_text,
+          processedImage: ocrResult.processed_image,
           summary: summaryResult.summary || summaryResult
         };
       } catch (error) {
