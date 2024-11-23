@@ -13,7 +13,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Initialize Google Generative AI with your API key
-const apiKey = 'AIzaSyDxfpvfw_FXorRZ4_N1s8vriK3ts-12HXg'; 
+const apiKey = process.env.GEMINI_API_KEY; 
 const genAI = new GoogleGenerativeAI(apiKey);
 const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
