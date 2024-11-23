@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import GeminiService from './Components/GeminiService';
 import CardContent from './Components/UI/CardContent';
 import Card from './Components/UI/Card';
 import CardHeader from './Components/UI/CardHeader';
@@ -16,12 +17,45 @@ const DocumentProcessor = () => {
   const [results, setResults] = useState([]);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('upload');
+  const [geminiService, setGeminiService] = useState(null);
+  const [isFatalError, setIsFatalError] = useState(false);
+
+  useEffect(() => {
+    // Initialize Gemini service when component mounts
+    const GEMINI_API_KEY = process.env.REACT_APP_GEMINI_API_KEY; // Get from environment variables
+    if (!GEMINI_API_KEY) {
+      console.error('Gemini API key not found in environment variables');
+      setError('Gemini API configuration missing');
+      return;
+    }
+    
+    const initializeGemini = () => {
+      try {
+        const service = new GeminiService(GEMINI_API_KEY);
+        setGeminiService(service);
+      } catch (error) {
+        console.error('Failed to initialize Gemini service:', error);
+        setError('Failed to initialize document processing service');
+      }
+    };
+
+    initializeGemini();
+  }, []);
   
-  const handleFileChange = (event) => {
+  const handleFileChange = useCallback((event) => {
     const newFiles = Array.from(event.target.files);
-    setFiles([...files, ...newFiles]);
-    setError(null);
-  };
+    const validFiles = newFiles.filter(file => {
+      const isValidSize = file.size <= 10 * 1024 * 1024; // 10MB limit
+      const isValidType = /\.(pdf|png|jpg|jpeg)$/i.test(file.name);
+      return isValidSize && isValidType;
+    });
+
+    if (validFiles.length !== newFiles.length) {
+      setError("Some files were skipped due to invalid type or size");
+    }
+
+    setFiles(prevFiles => [...prevFiles, ...validFiles]);
+  }, []);
 
   const removeFile = (index) => {
     const updatedFiles = [...files];
@@ -29,9 +63,15 @@ const DocumentProcessor = () => {
     setFiles(updatedFiles);
   };
 
-  const processDocuments = async () => {
+
+  const processDocuments = useCallback(async () => {
     if (files.length === 0) {
       setError("Please select at least one file");
+      return;
+    }
+
+    if (!geminiService) {
+      setError("Document processing service not initialized");
       return;
     }
 
@@ -40,43 +80,104 @@ const DocumentProcessor = () => {
 
     try {
       const formData = new FormData();
-      files.forEach(file => {
-        formData.append('files', file);
-      });
+      const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+      
+      if (totalSize > 50 * 1024 * 1024) { // 50MB total limit
+        throw new Error("Total file size exceeds 50MB limit");
+      }
+
+      files.forEach(file => formData.append('files', file));
 
       const response = await axios.post('/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
-        }
+        },
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          // You can add a progress state and UI if needed
+        },
+        timeout: 30000 // 30 second timeout
       });
 
-      setResults([...results, ...response.data]);
+      setResults(response.data);
       setFiles([]);
       setActiveTab('results');
     } catch (err) {
-      setError(err.response?.data?.error || 'Document processing failed');
+      const errorMessage = err.response?.data?.error || 
+                          err.message || 
+                          'Document processing failed';
+      setError(errorMessage);
+      
+      // Log error for debugging
+      console.error('Document processing error:', {
+        message: errorMessage,
+        status: err.response?.status,
+        files: files.map(f => ({ name: f.name, size: f.size }))
+      });
     } finally {
       setProcessing(false);
     }
-  };
+  }, [files, geminiService]);
 
-  const FilePreview = ({ file }) => (
-    <div className="border rounded-lg p-4 bg-gray-50 hover:bg-gray-100">
-      <div className="flex items-center space-x-3">
-        <FileIcon className="text-gray-400" />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
-          <p className="text-sm text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
+  // Add cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Cleanup any file references
+      files.forEach(file => {
+        URL.revokeObjectURL(file);
+      });
+    };
+  }, [files]);
+
+  if (isFatalError) {
+    return (
+      <div className="max-w-6xl mx-auto p-4">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <h2 className="text-xl font-semibold text-red-700">Something went wrong</h2>
+          <p className="text-sm text-red-600 mt-2">
+            Please refresh the page or try again later.
+          </p>
         </div>
-        <button
-          onClick={() => removeFile(files.indexOf(file))}
-          className="p-1 hover:bg-gray-200 rounded-full"
-        >
-          <TrashIcon className="w-4 h-4 text-gray-500" />
-        </button>
       </div>
-    </div>
-  );
+    );
+  }
+
+  const FilePreview = ({ file }) => {
+    const fileSize = (file.size / 1024).toFixed(1);
+    const isValidSize = file.size <= 10 * 1024 * 1024;
+    const isValidType = /\.(pdf|png|jpg|jpeg)$/i.test(file.name);
+
+    return (
+      <div className={`border rounded-lg p-4 ${
+        !isValidSize || !isValidType ? 'bg-red-50' : 'bg-gray-50 hover:bg-gray-100'
+      }`}>
+        <div className="flex items-center space-x-3">
+          <FileIcon className={`${
+            !isValidSize || !isValidType ? 'text-red-400' : 'text-gray-400'
+          }`} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-900 truncate">
+              {file.name}
+            </p>
+            <p className={`text-sm ${
+              !isValidSize ? 'text-red-500' : 'text-gray-500'
+            }`}>
+              {fileSize} KB
+              {!isValidSize && ' (exceeds size limit)'}
+              {!isValidType && ' (invalid file type)'}
+            </p>
+          </div>
+          <button
+            onClick={() => removeFile(files.indexOf(file))}
+            className="p-1 hover:bg-gray-200 rounded-full"
+            aria-label="Remove file"
+          >
+            <TrashIcon className="w-4 h-4 text-gray-500" />
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="max-w-6xl mx-auto p-4">
@@ -196,6 +297,37 @@ const DocumentProcessor = () => {
                             Confidence: {(result.confidence * 100).toFixed(1)}%
                           </span>
                         </div>
+                        
+                        {/* Extracted Text Section */}
+                        {result.extractedText && (
+                          <div className="mt-4">
+                            <h4 className="font-medium mb-2">Extracted Text</h4>
+                            <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded">
+                              {result.extractedText}
+                            </p>
+                          </div>
+                        )}
+      
+                        {/* Text Summary Section */}
+                        {result.textSummary && (
+                          <div className="mt-4">
+                            <h4 className="font-medium mb-2">Summary</h4>
+                            <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded">
+                              {result.textSummary}
+                            </p>
+                          </div>
+                        )}
+      
+                        {/* Image Description Section */}
+                        {result.imageDescription && (
+                          <div className="mt-4">
+                            <h4 className="font-medium mb-2">Image Analysis</h4>
+                            <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded">
+                              {result.imageDescription}
+                            </p>
+                          </div>
+                        )}
+      
                         <div className="mt-4 grid grid-cols-2 gap-4">
                           <div>
                             <h4 className="font-medium mb-2">Key Entities</h4>
