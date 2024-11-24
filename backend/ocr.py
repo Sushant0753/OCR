@@ -40,6 +40,33 @@ class DocumentProcessor:
             logger.error(f"Error initializing EasyOCR: {str(e)}")
             raise
 
+    def check_image_quality(self, image):
+        """
+        Check if the image is too blurry using the Laplacian variance method.
+        Returns a tuple of (is_acceptable, message)
+        """
+        try:
+            if len(image.shape) == 3:
+                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            else:
+                gray = image
+                
+            blur_metric = cv2.Laplacian(gray, cv2.CV_64F).var()
+            logger.info(f"Blur metric: {blur_metric}")
+            
+            if blur_metric < 100:
+                message = "Image is blurry; consider re-uploading."
+                is_acceptable = False
+            else:
+                message = "Image quality is acceptable."
+                is_acceptable = True
+                
+            return is_acceptable, message
+            
+        except Exception as e:
+            logger.error(f"Error checking image quality: {str(e)}")
+            return False, f"Error checking image quality: {str(e)}"
+
     def preprocess_image(self, image):
         try:
             logger.info(f"Preprocessing image with shape: {image.shape}")
@@ -49,11 +76,17 @@ class DocumentProcessor:
             else:
                 gray = image
 
-            # Apply bilateral filter for better edge preservation
             denoised = cv2.bilateralFilter(gray, 9, 75, 75)
 
             # Use Otsu's thresholding instead of adaptive threshold
-            _, thresh = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            #_, thresh = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))  # 5x5 rectangular kernel
+            dilated_image = cv2.dilate(denoised, kernel,iterations=1)
+            eroded_image = cv2.erode(dilated_image, kernel,iterations=1)
+
+
+            thresh=cv2.adaptiveThreshold(denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY,199,5)
 
             logger.info("Image preprocessing completed successfully")
             return thresh
@@ -98,13 +131,13 @@ class DocumentProcessor:
         try:
             logger.info(f"Processing {len(results)} results for confidence calculation")
             
-            # Get confidence scores with better error handling
+
             confidence_scores = []
             for idx, detection in enumerate(results):
                 try:
                     if len(detection) >= 3:
                         confidence = float(detection[2])
-                        # Normalize confidence to 0-1 range if needed
+                        # Normalizing confidence to 0-1 range if needed
                         confidence = max(0.0, min(1.0, confidence))
                         confidence_scores.append(confidence)
                         logger.debug(f"Detection {idx}: Confidence = {confidence}")
@@ -151,6 +184,10 @@ class DocumentProcessor:
             if image is None:
                 raise ValueError(f"Unable to read image file: {file_path}")
 
+            # Check image quality first
+            is_acceptable, quality_message = self.check_image_quality(image)
+            logger.info(f"Image quality check: {quality_message}")
+
             # Get image dimensions
             height, width = image.shape[:2]
             logger.info(f"Original image dimensions: {width}x{height}")
@@ -187,7 +224,8 @@ class DocumentProcessor:
                     'extracted_image': '',
                     'confidence': 0.0,
                     'word_count': 0,
-                    'character_count': 0
+                    'character_count': 0,
+                    'quality_check': quality_message
                 }
 
             # Extract text
@@ -210,7 +248,8 @@ class DocumentProcessor:
                 'confidence': confidence,
                 'word_count': len(extracted_text.split()),
                 'character_count': len(extracted_text),
-                'num_detections': len(results)
+                'num_detections': len(results),
+                'quality_check': quality_message
             }
             
             logger.info(f"Processing completed successfully. Confidence: {confidence:.4f}")
@@ -221,7 +260,8 @@ class DocumentProcessor:
             return {
                 'status': 'error',
                 'error': str(e),
-                'confidence': 0.0
+                'confidence': 0.0,
+                'quality_check': 'Error during quality check'
             }
 
 def main():
@@ -243,7 +283,8 @@ def main():
         error_result = {
             'status': 'error',
             'error': str(e),
-            'confidence': 0.0
+            'confidence': 0.0,
+            'quality_check': 'Error during quality check'
         }
         print(json.dumps(error_result))
         sys.exit(1)

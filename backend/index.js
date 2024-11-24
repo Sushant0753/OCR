@@ -6,7 +6,6 @@ import 'dotenv/config';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
-import axios from 'axios';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -26,7 +25,7 @@ const RETRY_DELAY = 1000; // 1 second
 
 const app = express();
 
-// Enhanced CORS configuration
+
 app.use(cors({
   origin:'http://localhost:5173',
   methods: ['GET', 'POST'],
@@ -94,7 +93,6 @@ const runOCR = async (filePath, retries = MAX_RETRIES) => {
             extractedImageLength: ocrResult.extracted_image ? ocrResult.extracted_image.length : 0
           });
           
-          // Change this from processed_image_path to extracted_image
           if (ocrResult.extracted_image) {
             ocrResult.processed_image = ocrResult.extracted_image;
           }
@@ -124,7 +122,6 @@ const runOCR = async (filePath, retries = MAX_RETRIES) => {
 
 
 
-// Function to get summary using LlamaAI
 async function getSummary(text, imageContent) {
   const prompt = `Please analyze the following OCR-extracted text, taking into account its context and nuances. Generate a comprehensive summary that highlights key insights, potential actions, and any relevant details, ensuring accuracy and clarity. While the document may not necessarily be from one of the following use cases, consider them to ensure the summary addresses specific needs:
 
