@@ -31,17 +31,19 @@ This project integrates Optical Character Recognition (OCR) with advanced text s
 
 ## **Technologies Used**  
 - **Back-End:**  
-  - Python  
+  - Python
+  - NodeJS
+  - ExpressJS
   - EasyOCR  
   - Gemini API  
   - OpenCV  
 
 - **Front-End:**  
-  - HTML/CSS/JavaScript  
+  - HTML/CSS/JavaScript
+  - ReactJS+Vite 
 
 - **Frameworks and Tools:**  
-  - Flask  
-  - Botpress  
+  - Tailwind CSS    
 
 ---
 
