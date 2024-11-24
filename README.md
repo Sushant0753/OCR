@@ -53,7 +53,7 @@ This project integrates Optical Character Recognition (OCR) with advanced text s
 3. **OCR Module:** Text is extracted using EasyOCR.  
 4. **Summarization Module:** Extracted text is summarized using the Gemini API.  
 5. **Output:** Results are delivered in standardized formats.  
-6. **Chatbot Integration:** Provides user guidance and support.  
+6. **Chatbot Integration:** Provides user guidance and a support.
 
 ---
 
