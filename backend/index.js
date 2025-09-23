@@ -26,8 +26,13 @@ const RETRY_DELAY = 1000; // 1 second
 const app = express();
 
 
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://ocr-iota-one.vercel.app'
+];
+
 app.use(cors({
-  origin:'http://localhost:5173',
+  origin: allowedOrigins,
   methods: ['GET', 'POST'],
   allowedHeaders: ['Content-Type'],
   credentials: true,
