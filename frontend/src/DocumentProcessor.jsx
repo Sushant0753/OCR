@@ -47,7 +47,7 @@ const DocumentProcessor = () => {
       const formData = new FormData();
       files.forEach(file => formData.append('files', file));
 
-      const BACKEND_URL = import.meta.BACKEND_URL
+      const BACKEND_URL = import.meta.env.BACKEND_URL
       const response = await axios.post(`${BACKEND_URL}/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
