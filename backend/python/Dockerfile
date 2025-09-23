@@ -5,7 +5,8 @@ FROM python:3.10-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PORT=5000 \
-    EASYOCR_PATH=/app/.EasyOCR  # Custom path for EasyOCR models
+    EASYOCR_PATH=/app/.EasyOCR
+# Custom path for EasyOCR models (comment moved to its own line)
 
 # System dependencies for OpenCV and image processing
 # Combine RUN commands to reduce layers
