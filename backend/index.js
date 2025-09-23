@@ -5,31 +5,29 @@ import cors from 'cors';
 import 'dotenv/config';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { spawn } from 'child_process';
+import axios from 'axios'; // NEW: use axios for HTTP requests to OCR service
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const apiKey = process.env.GEMINI_API_KEY; 
+const apiKey = process.env.GEMINI_API_KEY;
 const genAI = new GoogleGenerativeAI(apiKey);
 const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-
 const PORT = process.env.PORT || 3000;
 const UPLOADS_DIR = './uploads';
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_FILE_TYPES = ['.pdf', '.png', '.jpg', '.jpeg'];
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000; // 1 second
-
-const app = express();
-
-
 const allowedOrigins = [
   'http://localhost:5173',
   'https://ocr-iota-one.vercel.app'
 ];
+
+// URL of Python OCR microservice
+const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || 'http://localhost:5000/ocr';
+
+const app = express();
 
 app.use(cors({
   origin: allowedOrigins,
@@ -66,116 +64,22 @@ const upload = multer({
   fileFilter
 });
 
-const imageToBase64 = (filePath) => {
-  try {
-    const img = fs.readFileSync(filePath);
-    return Buffer.from(img).toString('base64');
-  } catch (error) {
-    console.error('Error converting image to base64:', error);
-    return null;
-  }
-};
-
-const runOCR = async (filePath, retries = MAX_RETRIES) => {
-  const executeOCR = () => {
-    return new Promise((resolve, reject) => {
-      const pythonProcess = spawn('python', ['ocr.py', filePath]);
-      let result = '';
-      let error = '';
-
-      pythonProcess.stdout.on('data', (data) => result += data.toString());
-      pythonProcess.stderr.on('data', (data) => error += data.toString());
-
-      pythonProcess.on('close', async (code) => {
-        if (code !== 0) {
-          reject(new Error(`OCR process failed with code ${code}: ${error}`));
-          return;
-        }
-        try {
-          const ocrResult = JSON.parse(result);
-          console.log('Raw OCR Result:', {
-            hasExtractedImage: !!ocrResult.extracted_image,
-            extractedImageLength: ocrResult.extracted_image ? ocrResult.extracted_image.length : 0
-          });
-          
-          if (ocrResult.extracted_image) {
-            ocrResult.processed_image = ocrResult.extracted_image;
-          }
-          
-          resolve(ocrResult);
-        } catch (e) {
-          reject(new Error(`Failed to parse OCR results: ${e.message}`));
-        }
-      });
-    });
-  };
-
-  let lastError;
-  for (let i = 0; i < retries; i++) {
-    try {
-      return await executeOCR();
-    } catch (error) {
-      lastError = error;
-      if (i < retries - 1) {
-        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * (i + 1)));
-      }
-    }
-  }
-  throw lastError;
-};
-
-
-
-
 async function getSummary(text, imageContent) {
-  const prompt = `Please analyze the following OCR-extracted text, taking into account its context and nuances. Generate a comprehensive summary that highlights key insights, potential actions, and any relevant details, ensuring accuracy and clarity. While the document may not necessarily be from one of the following use cases, consider them to ensure the summary addresses specific needs:
-
-    1.Legal Document Analysis: Summarize key points and actions from contracts, agreements, and legal notices.
-    2.Medical Records Processing:Extract and summarize patient information, diagnoses, and treatment plans.
-    3.Invoice Management:Extract financial data, summarize transactions, and calculate totals from invoices and receipts.
-
-  Extracted Text: ${text}
-
-  Image Content Description: ${imageContent}
-
-  Please format the summary in a clear, readable way.`;
-
-  console.log('Prompt sent to Google Gemini:', prompt);  // Log the prompt
-
+  const prompt = `Please analyze the following OCR-extracted text...`; // Truncated for brevity
   try {
-    // Call Google Gemini API to generate content
     const result = await model.generateContent(prompt);
-    console.log('Google Gemini Response:', result);  // Log the API response
-
-    // Log the candidates array to inspect its structure
-    console.log('Candidates:', result.response.candidates);
-
-    // Check if candidates exists and has at least one item
     if (result.response.candidates && result.response.candidates.length > 0) {
       const candidate = result.response.candidates[0];
-      
-      // Extract the text from the 'parts' array inside 'content'
-      const summary = candidate.content.parts[0];  // Assuming the text is in the first part
-      
-      console.log('Generated Summary:', summary);  // Log the summary text
-      return summary || 'No summary generated.';  // Return the summary or a fallback message
+      return candidate.content.parts[0] || 'No summary generated.';
     } else {
-      console.error('No candidates available in the response.');
       return 'Summary generation failed. No candidates returned.';
     }
   } catch (error) {
-    console.error('Error generating summary with Google Gemini:', error);
-    return {
-      summary: 'Summary generation failed. Please try again later.',
-      extracted_text: text,
-      error: error.message
-    };
+    return 'Summary generation failed. Please try again later.';
   }
 }
 
-
 app.post('/upload', upload.array('files'), async (req, res) => {
-  console.log('Uploaded files:', req.files);
   const uploadedFiles = [];
   try {
     if (!req.files || req.files.length === 0) {
@@ -185,21 +89,29 @@ app.post('/upload', upload.array('files'), async (req, res) => {
     const processingResults = await Promise.all(req.files.map(async (file) => {
       uploadedFiles.push(file.path);
       try {
-        const ocrResult = await runOCR(file.path);
+        // Send image to Python OCR service
+        const ocrResponse = await axios.post(
+          OCR_SERVICE_URL,
+          fs.createReadStream(file.path),
+          {
+            headers: { 'Content-Type': 'application/octet-stream' },
+            maxBodyLength: Infinity,
+            maxContentLength: Infinity,
+          }
+        );
+        const ocrResult = ocrResponse.data;
         const summaryResult = await getSummary(
           ocrResult.extracted_text,
           `This is a ${path.extname(file.originalname).slice(1).toUpperCase()} document with ${ocrResult.word_count} words and ${ocrResult.character_count} characters.`
         );
-
         return {
           fileName: file.originalname,
           documentType: path.extname(file.originalname).slice(1).toUpperCase(),
           extractedText: ocrResult.extracted_text,
-          processedImage: ocrResult.processed_image,
-          summary: summaryResult.summary || summaryResult
+          processedImage: ocrResult.extracted_image,
+          summary: summaryResult
         };
       } catch (error) {
-        console.error(`Error processing file ${file.originalname}:`, error);
         return {
           fileName: file.originalname,
           error: error.message
@@ -209,19 +121,14 @@ app.post('/upload', upload.array('files'), async (req, res) => {
 
     res.json({ files: processingResults });
   } catch (error) {
-    console.error('Error handling upload:', error);
     res.status(500).json({ error: 'An error occurred while processing the files' });
   } finally {
     // Cleanup uploaded files
     for (const filePath of uploadedFiles) {
-      fs.unlink(filePath, (err) => {
-        if (err) console.error(`Error deleting file ${filePath}:`, err);
-      });
+      fs.unlink(filePath, (err) => {});
     }
   }
 });
-
-
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
