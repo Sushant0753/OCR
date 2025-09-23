@@ -20,8 +20,9 @@ const UPLOADS_DIR = './uploads';
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_FILE_TYPES = ['.pdf', '.png', '.jpg', '.jpeg'];
 const allowedOrigins = [
-  'http://localhost:5173',
-  'https://ocr-iota-one.vercel.app'
+  'https://ocr-nfkgczoo6-sushant-kumars-projects-0770a5fb.vercel.app',
+  'https://ocr-iota-one.vercel.app',
+  'https://ocr-git-master-sushant-kumars-projects-0770a5fb.vercel.app'
 ];
 
 // URL of Python OCR microservice
