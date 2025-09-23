@@ -8,7 +8,7 @@ from PIL import Image
 import io
 import os
 
-app = Flask(_name_)
+app = Flask(__name__)
 
 def process_document(file_bytes):
     try:
