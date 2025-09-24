@@ -9,7 +9,7 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory inside container
-WORKDIR /app
+WORKDIR /
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
