@@ -3,11 +3,11 @@ import cv2
 import pytesseract
 import numpy as np
 import base64
-import io
 
 app = Flask(__name__)
 
-pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract" 
+# Path to tesseract binary
+pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
 
 def preprocess_image(image):
     """Preprocess image for OCR"""
@@ -31,9 +31,12 @@ def ocr_image(image):
     )
     results = []
     for i in range(len(data["text"])):
-        text = data["text"][i].strip()
+        text = str(data["text"][i]).strip()
         if text:
-            conf = float(data["conf"][i]) / 100 if data["conf"][i].isdigit() else 0.0
+            try:
+                conf = float(data["conf"][i]) / 100  # confidence scaled 0-1
+            except (ValueError, TypeError):
+                conf = 0.0
             x, y, w, h = data["left"][i], data["top"][i], data["width"][i], data["height"][i]
             box = [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
             results.append((box, text, conf))
@@ -44,7 +47,7 @@ def draw_boxes(image, results):
     output = image.copy()
     for box, text, conf in results:
         pts = np.array(box, np.int32).reshape((-1, 1, 2))
-        color = (0, int(255 * conf), 0)
+        color = (0, int(255 * conf), 0)  # green intensity proportional to confidence
         cv2.polylines(output, [pts], True, color, 2)
     return output
 
@@ -68,6 +71,7 @@ def ocr_endpoint():
         # OCR
         results = ocr_image(processed)
 
+        # If no text detected
         if not results:
             return jsonify({
                 "status": "success",
@@ -75,7 +79,8 @@ def ocr_endpoint():
                 "extracted_image": "",
                 "confidence": 0.0,
                 "word_count": 0,
-                "character_count": 0
+                "character_count": 0,
+                "num_detections": 0
             })
 
         # Extract text & confidence
@@ -108,7 +113,6 @@ def ocr_endpoint():
 
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
